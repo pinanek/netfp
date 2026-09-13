@@ -13,8 +13,6 @@ keywords = ["fingerprinting", "jarm", "network", "security", "tls"]
 categories = ["network-programming", "parser-implementations"]
 include = ["/Cargo.toml", "/LICENSE", "/README.md", "/src/**"]
 
-publish = ["crates-io"]
-
 [[bin]]
 name = "netfp"
 path = "src/main.rs"
