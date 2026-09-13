@@ -1,5 +1,10 @@
 # netfp
 
+[![Crates.io](https://img.shields.io/crates/v/netfp.svg)](https://crates.io/crates/netfp)
+[![Documentation](https://docs.rs/netfp/badge.svg)](https://docs.rs/netfp)
+[![CI](https://github.com/pinanek/netfp/actions/workflows/test.yml/badge.svg)](https://github.com/pinanek/netfp/actions/workflows/test.yml)
+[![License](https://img.shields.io/crates/l/netfp.svg)](https://github.com/pinanek/netfp/blob/main/LICENSE)
+
 Rust primitives and implementations for network fingerprinting.
 
 ```toml
