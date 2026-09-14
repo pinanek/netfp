@@ -77,6 +77,21 @@ impl Grease {
         Self((byte << 8) | byte)
     }
 
+    /// Returns whether `value` is a reserved 16-bit GREASE code point.
+    ///
+    /// ```
+    /// use netfp::tls::Grease;
+    ///
+    /// assert!(Grease::is_grease(0x0a0a));
+    /// assert!(Grease::is_grease(0xfafa));
+    /// assert!(!Grease::is_grease(0x0a1a));
+    /// assert!(!Grease::is_grease(0x1301));
+    /// ```
+    pub const fn is_grease(value: u16) -> bool {
+        let [high, low] = value.to_be_bytes();
+        high == low && high & 0x0f == 0x0a
+    }
+
     /// Returns the underlying 16-bit value.
     pub const fn as_u16(self) -> u16 {
         self.0

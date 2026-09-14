@@ -7,19 +7,14 @@
 
 Rust primitives and implementations for network fingerprinting.
 
-```toml
-[dependencies]
-netfp = "0.1"
-```
-
-Documentation: <https://docs.rs/netfp>
-
 ## Supported fingerprints
 
+- [JA3 and JA3S](https://github.com/salesforce/ja3) passive TLS client and server fingerprinting
 - [JARM](https://github.com/salesforce/jarm) active TLS server fingerprinting
 
 ## Crate features
 
+- `ja3` *(default)* — enables JA3 and JA3S fingerprinting.
 - `jarm` *(default)* — enables JARM probe generation and fingerprinting.
 
 ## License
@@ -28,6 +23,7 @@ Licensed under the [MIT License](https://github.com/pinanek/netfp/blob/main/LICE
 
 ## Credit
 
-The JARM algorithm was created by Salesforce and is available from the
-[original JARM repository](https://github.com/salesforce/jarm) under the
-[BSD 3-Clause License](https://github.com/salesforce/jarm/blob/master/LICENSE.txt).
+JA3, JA3S, and JARM were created by Salesforce. Their original implementations
+are available in the [JA3](https://github.com/salesforce/ja3) and
+[JARM](https://github.com/salesforce/jarm) repositories under the BSD 3-Clause
+License.
