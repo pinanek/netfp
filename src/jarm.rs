@@ -22,8 +22,6 @@ use crate::{
 
 const JARM_PROBE_COUNT: usize = 10;
 
-/// Canonical cipher-suite order used to encode the cipher portion of a JARM
-/// fingerprint.
 const JARM_CIPHER_ORDER: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_RSA_WITH_RC4_128_MD5,
     TlsCipherSuite::TLS_RSA_WITH_RC4_128_SHA,
@@ -97,7 +95,6 @@ const JARM_CIPHER_ORDER: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_AES_128_CCM_8_SHA256,
 ];
 
-/// Complete cipher-suite list offered by standard JARM probes.
 const ALL_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
     TlsCipherSuite::TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
@@ -129,7 +126,6 @@ const ALL_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_CBC_SHA256,
     TlsCipherSuite::TLS_ECDHE_ECDSA_WITH_CAMELLIA_256_CBC_SHA384,
     TlsCipherSuite::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-    // TLS 1.3
     TlsCipherSuite::TLS_AES_256_GCM_SHA384,
     TlsCipherSuite::TLS_AES_128_GCM_SHA256,
     TlsCipherSuite::OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
@@ -146,7 +142,6 @@ const ALL_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_ECDHE_RSA_WITH_CAMELLIA_128_CBC_SHA256,
     TlsCipherSuite::TLS_ECDHE_RSA_WITH_CAMELLIA_256_CBC_SHA384,
     TlsCipherSuite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-    // TLS 1.3
     TlsCipherSuite::TLS_AES_128_CCM_8_SHA256,
     TlsCipherSuite::TLS_AES_128_CCM_SHA256,
     TlsCipherSuite::TLS_CHACHA20_POLY1305_SHA256,
@@ -172,7 +167,6 @@ const ALL_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_RSA_WITH_RC4_128_SHA,
 ];
 
-/// JARM cipher-suite list with all TLS 1.3 suites removed.
 const NO_TLS13_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
     TlsCipherSuite::TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
@@ -240,7 +234,6 @@ const NO_TLS13_CIPHER_SUITES: &[TlsCipherSuite] = &[
     TlsCipherSuite::TLS_RSA_WITH_RC4_128_SHA,
 ];
 
-/// Signature algorithms advertised by JARM probes, in canonical order.
 const SIGNATURE_ALGORITHMS: &[TlsSignatureAlgorithm] = &[
     TlsSignatureAlgorithm::ECDSA_SECP256R1_SHA256,
     TlsSignatureAlgorithm::RSA_PSS_RSAE_SHA256,
@@ -253,10 +246,8 @@ const SIGNATURE_ALGORITHMS: &[TlsSignatureAlgorithm] = &[
     TlsSignatureAlgorithm::RSA_PKCS1_SHA1,
 ];
 
-/// PSK key-exchange modes advertised by JARM probes.
 const PSK_KEY_EXCHANGE_MODES: &[TlsPskKeyExchangeMode] = &[TlsPskKeyExchangeMode::PSK_DHE_KE];
 
-/// Supported groups advertised by JARM probes, in canonical order.
 const SUPPORTED_GROUPS: &[TlsSupportedGroup] = &[
     TlsSupportedGroup::X25519,
     TlsSupportedGroup::SECP256R1,
@@ -264,11 +255,9 @@ const SUPPORTED_GROUPS: &[TlsSupportedGroup] = &[
     TlsSupportedGroup::SECP521R1,
 ];
 
-/// Version list used by probes that advertise support through TLS 1.2.
 const TLS12_SUPPORTED_VERSIONS: &[TlsVersion] =
     &[TlsVersion::TLS10, TlsVersion::TLS11, TlsVersion::TLS12];
 
-/// Version list used by probes that advertise support through TLS 1.3.
 const TLS13_SUPPORTED_VERSIONS: &[TlsVersion] = &[
     TlsVersion::TLS10,
     TlsVersion::TLS11,
@@ -276,7 +265,6 @@ const TLS13_SUPPORTED_VERSIONS: &[TlsVersion] = &[
     TlsVersion::TLS13,
 ];
 
-/// Full ALPN protocol list advertised by standard JARM probes.
 const ALL_ALPNS: &[AlpnProtocol] = &[
     AlpnProtocol::HTTP_09,
     AlpnProtocol::HTTP_10,
@@ -289,7 +277,6 @@ const ALL_ALPNS: &[AlpnProtocol] = &[
     AlpnProtocol::HQ,
 ];
 
-/// Reduced ALPN list used by JARM's rare-ALPN probes.
 const RARE_ALPNS: &[AlpnProtocol] = &[
     AlpnProtocol::HTTP_09,
     AlpnProtocol::HTTP_10,
@@ -300,17 +287,13 @@ const RARE_ALPNS: &[AlpnProtocol] = &[
     AlpnProtocol::HQ,
 ];
 
-/// Selects the base cipher-suite list for a JARM probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CipherListKind {
-    /// Includes all cipher suites used by JARM, including TLS 1.3 suites.
     All,
-    /// Excludes TLS 1.3 cipher suites.
     NoTls13,
 }
 
 impl CipherListKind {
-    /// Returns the canonical cipher-suite list represented by this selection.
     const fn as_slice(self) -> &'static [TlsCipherSuite] {
         match self {
             Self::All => ALL_CIPHER_SUITES,
@@ -319,14 +302,10 @@ impl CipherListKind {
     }
 }
 
-/// Selects the supported-version profile advertised by a JARM probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VersionSupport {
-    /// Does not explicitly request an additional supported-version profile.
     None,
-    /// Advertises versions from TLS 1.0 through TLS 1.2.
     Tls12,
-    /// Advertises versions from TLS 1.0 through TLS 1.3.
     Tls13,
 }
 
@@ -340,7 +319,6 @@ impl VersionSupport {
             (Self::Tls12, _) => TLS12_SUPPORTED_VERSIONS,
             (Self::Tls13, _) => TLS13_SUPPORTED_VERSIONS,
 
-            // Match JARM behavior for TLS 1.3 probes
             (Self::None, TlsVersion::TLS13) => TLS13_SUPPORTED_VERSIONS,
 
             (Self::None, _) => &[],
@@ -348,12 +326,9 @@ impl VersionSupport {
     }
 }
 
-/// Ordering transformation applied to a JARM probe's cipher-suite list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CipherListOrder {
-    /// Preserves the canonical order.
     Forward,
-    /// Reverses the canonical order.
     Reverse,
     /// Selects the upper half and orders it from the midpoint outward.
     TopHalf,
@@ -364,7 +339,6 @@ enum CipherListOrder {
 }
 
 impl CipherListOrder {
-    /// Applies this ordering transformation to `ciphers`.
     fn reorder(self, ciphers: &[TlsCipherSuite]) -> Vec<TlsCipherSuite> {
         match self {
             Self::Forward => ciphers.to_vec(),
@@ -430,14 +404,11 @@ impl CipherListOrder {
 /// extension blocks themselves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExtensionOrder {
-    /// Preserves the canonical order.
     Forward,
-    /// Reverses the canonical order.
     Reverse,
 }
 
 impl ExtensionOrder {
-    /// Applies this ordering to a slice of copyable values.
     fn reorder<T: Copy>(self, values: &[T]) -> Vec<T> {
         match self {
             Self::Forward => values.to_vec(),
@@ -446,7 +417,6 @@ impl ExtensionOrder {
     }
 }
 
-/// Selects the ALPN protocol set advertised by a JARM probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AlpnProfile {
     /// Advertises the complete canonical JARM ALPN list.
@@ -456,7 +426,6 @@ enum AlpnProfile {
 }
 
 impl<'a> AlpnProfile {
-    /// Returns the ALPN protocol list represented by this profile.
     const fn as_slice(self) -> &'static [AlpnProtocol<'a>] {
         match self {
             Self::All => ALL_ALPNS,
@@ -541,13 +510,10 @@ impl JarmProbeDefinition {
 
         let mut extension_data = Vec::new();
 
-        // ServerNameList length
         extension_data.extend_from_slice(&((host_bytes.len() + 3) as u16).to_be_bytes());
 
-        // host_name
         extension_data.push(0x00);
 
-        // HostName length
         extension_data.extend_from_slice(&(host_bytes.len() as u16).to_be_bytes());
         extension_data.extend_from_slice(host_bytes);
 
@@ -569,7 +535,6 @@ impl JarmProbeDefinition {
     fn supported_groups_extension(&self) -> Result<TlsExtension, Error> {
         let mut data = Vec::new();
 
-        // named_group_list length
         data.extend_from_slice(&((SUPPORTED_GROUPS.len() * size_of::<u16>()) as u16).to_be_bytes());
 
         for group in SUPPORTED_GROUPS {
@@ -599,7 +564,6 @@ impl JarmProbeDefinition {
 
         let mut data = Vec::new();
 
-        // ProtocolNameList length
         data.extend_from_slice(&(protocols.len() as u16).to_be_bytes());
         data.extend_from_slice(&protocols);
 
@@ -618,7 +582,6 @@ impl JarmProbeDefinition {
 
         let mut data = Vec::new();
 
-        // supported_signature_algorithms length
         data.extend_from_slice(&(algorithms.len() as u16).to_be_bytes());
         data.extend_from_slice(&algorithms);
 
@@ -631,7 +594,6 @@ impl JarmProbeDefinition {
         if self.grease {
             key_shares.extend_from_slice(&Grease::random().to_be_bytes());
 
-            // GREASE key exchange length
             key_shares.extend_from_slice(&1u16.to_be_bytes());
             key_shares.push(0x00);
         }
@@ -642,7 +604,6 @@ impl JarmProbeDefinition {
 
         let mut data = Vec::new();
 
-        // client_shares length
         data.extend_from_slice(&(key_shares.len() as u16).to_be_bytes());
         data.extend_from_slice(&key_shares);
 
@@ -652,7 +613,6 @@ impl JarmProbeDefinition {
     fn psk_key_exchange_modes_extension(&self) -> Result<TlsExtension, Error> {
         let mut data = Vec::with_capacity(PSK_KEY_EXCHANGE_MODES.len() + 1);
 
-        // ke_modes length
         data.push(PSK_KEY_EXCHANGE_MODES.len() as u8);
 
         for mode in PSK_KEY_EXCHANGE_MODES {
@@ -678,7 +638,6 @@ impl JarmProbeDefinition {
 
         let mut data = Vec::with_capacity(versions.len() + 1);
 
-        // versions length
         data.push(versions.len() as u8);
         data.extend_from_slice(&versions);
 
@@ -830,9 +789,8 @@ fn jarm_probe_definitions(host: impl Into<String>) -> Vec<JarmProbeDefinition> {
 
 /// Builds the ten JARM `ClientHello` probes in canonical order.
 ///
-/// Random fields and GREASE values are generated with the thread-local random
-/// number generator. Each returned byte vector is a complete TLS record ready
-/// to send over a separate TCP connection to the target server.
+/// Each returned byte vector is a complete TLS record ready to send over a
+/// separate TCP connection to the target server.
 ///
 /// This function does not resolve the host or open any network connections.
 ///

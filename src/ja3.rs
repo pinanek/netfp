@@ -7,9 +7,6 @@ use crate::{
 
 /// Computes the JA3 fingerprint of a parsed TLS `ClientHello`.
 ///
-/// GREASE values are excluded before the canonical JA3 string is hashed with
-/// MD5. The returned fingerprint is 32 lowercase hexadecimal characters.
-///
 /// # Errors
 ///
 /// Returns an error if the `supported_groups` or `ec_point_formats` extension
@@ -98,9 +95,6 @@ pub fn ja3_fingerprint(client_hello: &TlsClientHello) -> Result<String, Error> {
 }
 
 /// Computes the JA3S fingerprint of a parsed TLS `ServerHello`.
-///
-/// The canonical JA3S string is hashed with MD5. The returned fingerprint is
-/// 32 lowercase hexadecimal characters.
 pub fn ja3s_fingerprint(server_hello: &TlsServerHello) -> String {
     let extensions = server_hello
         .extensions()

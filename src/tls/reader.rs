@@ -102,7 +102,6 @@ impl<'a> TlsReader<'a> {
     pub fn read_array<const N: usize>(&mut self) -> Result<[u8; N], Error> {
         let bytes = self.read_bytes(N)?;
 
-        // Safe because read_bytes(N) guarantees exactly N bytes.
         Ok(bytes
             .try_into()
             .expect("slice length must match requested array length"))

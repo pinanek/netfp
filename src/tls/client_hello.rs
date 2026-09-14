@@ -36,9 +36,7 @@ pub struct TlsClientHello {
 impl TlsClientHello {
     /// Creates a new TLS `ClientHello` body.
     ///
-    /// The random and legacy session ID are generated with the thread-local
-    /// random number generator. TLS 1.3 is encoded with the TLS 1.2 legacy
-    /// version, as required by the protocol.
+    /// TLS 1.3 is encoded with the TLS 1.2 legacy version.
     ///
     /// # Errors
     ///
