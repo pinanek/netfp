@@ -50,7 +50,23 @@ impl TlsClientHello {
         cipher_suites: Vec<TlsCipherSuite>,
         extensions: Vec<TlsExtension>,
     ) -> Result<Self, Error> {
-        validate_cipher_suites(&cipher_suites)?;
+        if cipher_suites.is_empty() {
+            return Err(Error::Malformed(
+                "ClientHello must contain at least one cipher suite",
+            ));
+        }
+
+        let encoded_length = cipher_suites
+            .len()
+            .checked_mul(2)
+            .ok_or(Error::LengthOverflow {
+                max: u16::MAX as usize,
+                actual: usize::MAX,
+            })?;
+        u16::try_from(encoded_length).map_err(|_| Error::LengthOverflow {
+            max: u16::MAX as usize,
+            actual: encoded_length,
+        })?;
 
         Ok(Self {
             legacy_version: version.legacy_version(),
@@ -201,28 +217,6 @@ impl TlsClientHello {
     pub fn extensions(&self) -> &[TlsExtension] {
         &self.extensions
     }
-}
-
-fn validate_cipher_suites(cipher_suites: &[TlsCipherSuite]) -> Result<(), Error> {
-    if cipher_suites.is_empty() {
-        return Err(Error::Malformed(
-            "ClientHello must contain at least one cipher suite",
-        ));
-    }
-
-    let encoded_length = cipher_suites
-        .len()
-        .checked_mul(2)
-        .ok_or(Error::LengthOverflow {
-            max: u16::MAX as usize,
-            actual: usize::MAX,
-        })?;
-    u16::try_from(encoded_length).map_err(|_| Error::LengthOverflow {
-        max: u16::MAX as usize,
-        actual: encoded_length,
-    })?;
-
-    Ok(())
 }
 
 #[cfg(test)]
