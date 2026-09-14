@@ -20,6 +20,8 @@ use crate::{
     utils::random_32_bytes,
 };
 
+const JARM_PROBE_COUNT: usize = 10;
+
 /// Canonical cipher-suite order used to encode the cipher portion of a JARM
 /// fingerprint.
 const JARM_CIPHER_ORDER: &[TlsCipherSuite] = &[
@@ -684,8 +686,165 @@ impl JarmProbeDefinition {
     }
 }
 
-/// Generates the ten TLS probes and combines their responses into a JARM
-/// fingerprint.
+#[derive(Debug)]
+struct JarmServerHello {
+    cipher_suite: TlsCipherSuite,
+    legacy_version_byte: u8,
+    alpn: String,
+    extension_types: Vec<TlsExtensionType>,
+}
+
+impl TryFrom<&TlsServerHello> for JarmServerHello {
+    type Error = Error;
+
+    fn try_from(value: &TlsServerHello) -> Result<Self, Self::Error> {
+        Ok(Self {
+            cipher_suite: *value.cipher_suite(),
+            legacy_version_byte: value.legacy_version().to_be_bytes()[1],
+            alpn: value.alpn_protocol()?.unwrap_or_default().to_owned(),
+            extension_types: value.extension_types(),
+        })
+    }
+}
+
+fn jarm_probe_definitions(host: impl Into<String>) -> Vec<JarmProbeDefinition> {
+    let host = host.into();
+
+    vec![
+        // 1. tls1_2_forward
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS12,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::Forward,
+            extension_order: ExtensionOrder::Reverse,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls12,
+            grease: false,
+        },
+        // 2. tls1_2_reverse
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS12,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::Reverse,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls12,
+            grease: false,
+        },
+        // 3. tls1_2_top_half
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS12,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::TopHalf,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::None,
+            grease: false,
+        },
+        // 4. tls1_2_bottom_half
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS12,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::BottomHalf,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::Rare,
+            version_support: VersionSupport::None,
+            grease: false,
+        },
+        // 5. tls1_2_middle_out
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS12,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::MiddleOut,
+            extension_order: ExtensionOrder::Reverse,
+            alpn_profile: AlpnProfile::Rare,
+            version_support: VersionSupport::None,
+            grease: true,
+        },
+        // 6. tls1_1_middle_out
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS11,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::Forward,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::None,
+            grease: false,
+        },
+        // 7. tls1_3_forward
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS13,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::Forward,
+            extension_order: ExtensionOrder::Reverse,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls13,
+            grease: false,
+        },
+        // 8. tls1_3_reverse
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS13,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::Reverse,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls13,
+            grease: false,
+        },
+        // 9. tls1_3_invalid
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS13,
+            cipher_list_kind: CipherListKind::NoTls13,
+            cipher_list_order: CipherListOrder::Forward,
+            extension_order: ExtensionOrder::Forward,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls13,
+            grease: false,
+        },
+        // 10. tls1_3_middle_out
+        JarmProbeDefinition {
+            host: host.clone(),
+            protocol_version: TlsVersion::TLS13,
+            cipher_list_kind: CipherListKind::All,
+            cipher_list_order: CipherListOrder::MiddleOut,
+            extension_order: ExtensionOrder::Reverse,
+            alpn_profile: AlpnProfile::All,
+            version_support: VersionSupport::Tls13,
+            grease: true,
+        },
+    ]
+}
+
+/// Builds the ten JARM `ClientHello` probes in canonical order.
+///
+/// Random fields and GREASE values are generated with the thread-local random
+/// number generator. Each returned byte vector is a complete TLS record ready
+/// to send over a separate TCP connection to the target server.
+///
+/// This function does not resolve the host or open any network connections.
+///
+/// # Errors
+///
+/// Returns [`Error::LengthOverflow`] when the host or an encoded TLS field
+/// cannot fit in its protocol length field, or [`Error::Malformed`] if a
+/// generated `ClientHello` is invalid.
+pub fn generate_jarm_probes(host: impl Into<String>) -> Result<Vec<Vec<u8>>, Error> {
+    jarm_probe_definitions(host)
+        .iter()
+        .map(JarmProbeDefinition::client_hello_probe)
+        .collect()
+}
+
+/// Produces a JARM fingerprint from probe responses.
 ///
 /// JARM actively fingerprints a TLS server by sending ten specially ordered
 /// `ClientHello` messages. The selected cipher suite, legacy TLS version,
@@ -701,7 +860,7 @@ impl JarmProbeDefinition {
 /// };
 ///
 /// use netfp::{
-///     JarmFingerprint,
+///     generate_jarm_probes, jarm_fingerprint,
 ///     tls::{ServerHelloDecoder, TlsServerHello},
 /// };
 ///
@@ -727,245 +886,72 @@ impl JarmProbeDefinition {
 ///     }
 /// }
 ///
-/// let jarm = JarmFingerprint::new("example.com");
-/// let responses = jarm
-///     .probes()?
+/// let responses = generate_jarm_probes("example.com")?
 ///     .iter()
 ///     .map(|probe| scan_probe("example.com:443", probe))
 ///     .collect::<Result<Vec<_>, _>>()?;
-/// let fingerprint = jarm.fingerprint(&responses);
+/// let fingerprint = jarm_fingerprint(&responses);
 ///
 /// println!("{fingerprint}");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub struct JarmFingerprint {
-    probes: Vec<JarmProbeDefinition>,
-}
+///
+/// Responses must be supplied in the same order as the records returned by
+/// [`generate_jarm_probes`]. A missing response is represented by `None`.
+/// Missing entries at the end of the slice are also treated as absent
+/// responses; entries beyond the first ten are ignored.
+///
+/// The returned value is always 62 lowercase ASCII characters. If every
+/// response is absent, it consists of 62 zeroes.
+pub fn jarm_fingerprint(server_hellos: &[Option<TlsServerHello>]) -> String {
+    let mut received_server_hello = false;
+    let mut cipher_and_version = String::with_capacity(JARM_PROBE_COUNT * 3);
+    let mut alpn_and_extensions = String::new();
 
-#[derive(Debug)]
-struct JarmServerHello {
-    cipher_suite: TlsCipherSuite,
-    legacy_version_byte: u8,
-    alpn: String,
-    extension_types: Vec<TlsExtensionType>,
-}
+    for probe_index in 0..JARM_PROBE_COUNT {
+        let server_hello = server_hellos
+            .get(probe_index)
+            .and_then(Option::as_ref)
+            .and_then(|response| JarmServerHello::try_from(response).ok());
 
-impl TryFrom<&TlsServerHello> for JarmServerHello {
-    type Error = Error;
+        let Some(server_hello) = server_hello else {
+            cipher_and_version.push_str("000");
+            continue;
+        };
+        received_server_hello = true;
 
-    fn try_from(value: &TlsServerHello) -> Result<Self, Self::Error> {
-        Ok(Self {
-            cipher_suite: *value.cipher_suite(),
-            legacy_version_byte: value.legacy_version().to_be_bytes()[1],
-            alpn: value.alpn_protocol()?.unwrap_or_default().to_owned(),
-            extension_types: value.extension_types(),
-        })
-    }
-}
-
-impl JarmFingerprint {
-    /// Creates a JARM fingerprint generator for `host`.
-    ///
-    /// The host is encoded in the SNI extension of all ten probes. This method
-    /// does not resolve the host or open any network connections.
-    pub fn new(host: impl Into<String>) -> Self {
-        let host = host.into();
-
-        let probes = vec![
-            // 1. tls1_2_forward
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS12,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::Forward,
-                extension_order: ExtensionOrder::Reverse,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls12,
-                grease: false,
-            },
-            // 2. tls1_2_reverse
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS12,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::Reverse,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls12,
-                grease: false,
-            },
-            // 3. tls1_2_top_half
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS12,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::TopHalf,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::None,
-                grease: false,
-            },
-            // 4. tls1_2_bottom_half
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS12,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::BottomHalf,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::Rare,
-                version_support: VersionSupport::None,
-                grease: false,
-            },
-            // 5. tls1_2_middle_out
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS12,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::MiddleOut,
-                extension_order: ExtensionOrder::Reverse,
-                alpn_profile: AlpnProfile::Rare,
-                version_support: VersionSupport::None,
-                grease: true,
-            },
-            // 6. tls1_1_middle_out
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS11,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::Forward,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::None,
-                grease: false,
-            },
-            // 7. tls1_3_forward
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS13,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::Forward,
-                extension_order: ExtensionOrder::Reverse,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls13,
-                grease: false,
-            },
-            // 8. tls1_3_reverse
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS13,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::Reverse,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls13,
-                grease: false,
-            },
-            // 9. tls1_3_invalid
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS13,
-                cipher_list_kind: CipherListKind::NoTls13,
-                cipher_list_order: CipherListOrder::Forward,
-                extension_order: ExtensionOrder::Forward,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls13,
-                grease: false,
-            },
-            // 10. tls1_3_middle_out
-            JarmProbeDefinition {
-                host: host.clone(),
-                protocol_version: TlsVersion::TLS13,
-                cipher_list_kind: CipherListKind::All,
-                cipher_list_order: CipherListOrder::MiddleOut,
-                extension_order: ExtensionOrder::Reverse,
-                alpn_profile: AlpnProfile::All,
-                version_support: VersionSupport::Tls13,
-                grease: true,
-            },
-        ];
-
-        Self { probes }
-    }
-
-    /// Builds the ten JARM `ClientHello` probes in canonical order.
-    ///
-    /// Random fields and GREASE values are generated with the thread-local
-    /// random number generator.
-    ///
-    /// Each returned byte vector is a complete TLS record ready to send over a
-    /// separate TCP connection to the target server.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::LengthOverflow`] when the host or an encoded TLS field
-    /// cannot fit in its protocol length field, or [`Error::Malformed`] if a
-    /// generated `ClientHello` is invalid.
-    pub fn probes(&self) -> Result<Vec<Vec<u8>>, Error> {
-        self.probes
+        let cipher_ordinal = JARM_CIPHER_ORDER
             .iter()
-            .map(JarmProbeDefinition::client_hello_probe)
-            .collect()
-    }
+            .position(|candidate| candidate == &server_hello.cipher_suite)
+            .map_or(JARM_CIPHER_ORDER.len() + 1, |index| index + 1);
+        let version = "abcdef"
+            .chars()
+            .nth(usize::from(server_hello.legacy_version_byte))
+            .unwrap_or('0');
 
-    /// Produces the JARM fingerprint from the probe responses.
-    ///
-    /// Responses must be supplied in the same order as the records returned by
-    /// [`Self::probes`]. A missing response is represented by `None`. Missing
-    /// entries at the end of the slice are also treated as absent responses;
-    /// entries beyond the first ten are ignored.
-    ///
-    /// The returned value is always 62 lowercase ASCII characters. If every
-    /// response is absent, it consists of 62 zeroes.
-    pub fn fingerprint(&self, server_hellos: &[Option<TlsServerHello>]) -> String {
-        let mut received_server_hello = false;
-        let mut cipher_and_version = String::with_capacity(self.probes.len() * 3);
-        let mut alpn_and_extensions = String::new();
-
-        for probe_index in 0..self.probes.len() {
-            let server_hello = server_hellos
-                .get(probe_index)
-                .and_then(Option::as_ref)
-                .and_then(|response| JarmServerHello::try_from(response).ok());
-
-            let Some(server_hello) = server_hello else {
-                cipher_and_version.push_str("000");
-                continue;
-            };
-            received_server_hello = true;
-
-            let cipher_ordinal = JARM_CIPHER_ORDER
-                .iter()
-                .position(|candidate| candidate == &server_hello.cipher_suite)
-                .map_or(JARM_CIPHER_ORDER.len() + 1, |index| index + 1);
-            let version = "abcdef"
-                .chars()
-                .nth(usize::from(server_hello.legacy_version_byte))
-                .unwrap_or('0');
-
-            let extension_types = server_hello
-                .extension_types
-                .iter()
-                .map(|extension_type| format!("{:04x}", extension_type.as_u16()))
-                .collect::<Vec<_>>()
-                .join("-");
-
-            cipher_and_version.push_str(&format!("{cipher_ordinal:02x}"));
-            cipher_and_version.push(version);
-            alpn_and_extensions.push_str(&server_hello.alpn);
-            alpn_and_extensions.push_str(&extension_types);
-        }
-
-        if !received_server_hello {
-            return "0".repeat(62);
-        }
-
-        let digest = Sha256::digest(alpn_and_extensions.as_bytes());
-        let digest_hex = digest
+        let extension_types = server_hello
+            .extension_types
             .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
-        format!("{cipher_and_version}{digest_hex}")[..62].to_owned()
+            .map(|extension_type| format!("{:04x}", extension_type.as_u16()))
+            .collect::<Vec<_>>()
+            .join("-");
+
+        cipher_and_version.push_str(&format!("{cipher_ordinal:02x}"));
+        cipher_and_version.push(version);
+        alpn_and_extensions.push_str(&server_hello.alpn);
+        alpn_and_extensions.push_str(&extension_types);
     }
+
+    if !received_server_hello {
+        return "0".repeat(62);
+    }
+
+    let digest = Sha256::digest(alpn_and_extensions.as_bytes());
+    let digest_hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("{cipher_and_version}{digest_hex}")[..62].to_owned()
 }
 
 #[cfg(test)]
@@ -979,7 +965,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            JarmFingerprint::new("example.com").fingerprint(&responses),
+            jarm_fingerprint(&responses),
             "41d41d41d41d41d41d41d41d41d41da0bfb9dc5a7a50dfa51c2a70be11dda8"
         );
     }

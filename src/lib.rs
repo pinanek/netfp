@@ -9,4 +9,4 @@ mod utils;
 
 pub use error::Error;
 #[cfg(feature = "jarm")]
-pub use jarm::JarmFingerprint;
+pub use jarm::{generate_jarm_probes, jarm_fingerprint};
