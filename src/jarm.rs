@@ -702,7 +702,11 @@ impl TryFrom<&TlsServerHello> for JarmServerHello {
             cipher_suite: *value.cipher_suite(),
             legacy_version_byte: value.legacy_version().to_be_bytes()[1],
             alpn: value.alpn_protocol()?.unwrap_or_default().to_owned(),
-            extension_types: value.extension_types(),
+            extension_types: value
+                .extensions()
+                .iter()
+                .map(TlsExtension::extension_type)
+                .collect(),
         })
     }
 }

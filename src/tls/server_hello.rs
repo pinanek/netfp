@@ -237,12 +237,9 @@ impl TlsServerHello {
         &self.session_id
     }
 
-    /// Returns the extension types in their original wire order.
-    pub fn extension_types(&self) -> Vec<TlsExtensionType> {
-        self.extensions
-            .iter()
-            .map(TlsExtension::extension_type)
-            .collect()
+    /// Returns the extensions in their original wire order.
+    pub fn extensions(&self) -> &[TlsExtension] {
+        &self.extensions
     }
 
     /// Returns the cipher suite selected by the server.
@@ -328,12 +325,14 @@ mod tests {
             hello.cipher_suite(),
             &TlsCipherSuite::TLS_AES_128_GCM_SHA256
         );
+        assert_eq!(hello.extensions().len(), 2);
         assert_eq!(
-            hello.extension_types(),
-            vec![
-                TlsExtensionType::SUPPORTED_VERSIONS,
-                TlsExtensionType::APPLICATION_LAYER_PROTOCOL_NEGOTIATION,
-            ]
+            hello.extensions()[0].extension_type(),
+            TlsExtensionType::SUPPORTED_VERSIONS
+        );
+        assert_eq!(
+            hello.extensions()[1].extension_type(),
+            TlsExtensionType::APPLICATION_LAYER_PROTOCOL_NEGOTIATION
         );
         assert_eq!(hello.alpn_protocol().unwrap(), Some("h2"));
     }

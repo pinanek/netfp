@@ -103,9 +103,9 @@ pub fn ja3_fingerprint(client_hello: &TlsClientHello) -> Result<String, Error> {
 /// 32 lowercase hexadecimal characters.
 pub fn ja3s_fingerprint(server_hello: &TlsServerHello) -> String {
     let extensions = server_hello
-        .extension_types()
+        .extensions()
         .iter()
-        .map(|extension_type| extension_type.as_u16().to_string())
+        .map(|extension| extension.extension_type().as_u16().to_string())
         .collect::<Vec<_>>()
         .join("-");
 
