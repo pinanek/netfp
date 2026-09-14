@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    tls::{TLS_RECORD_HEADER_LEN, TlsContentType, TlsReader, TlsVersion},
+    tls::{MAX_TLS_PLAINTEXT_LEN, TLS_RECORD_HEADER_LEN, TlsContentType, TlsReader, TlsVersion},
 };
 
 /// A borrowed TLS record.
@@ -39,6 +39,19 @@ pub struct TlsRecord<'a> {
 }
 
 impl<'a> TlsRecord<'a> {
+    /// Creates a TLS record that borrows `payload`.
+    pub const fn new(
+        content_type: TlsContentType,
+        legacy_version: TlsVersion,
+        payload: &'a [u8],
+    ) -> Self {
+        Self {
+            content_type,
+            legacy_version,
+            payload,
+        }
+    }
+
     /// Parses the first complete TLS record in `bytes`.
     ///
     /// The returned `usize` is the number of bytes consumed by the record.
@@ -92,6 +105,29 @@ impl<'a> TlsRecord<'a> {
             },
             record_len,
         ))
+    }
+
+    /// Encodes this TLS record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::LengthOverflow`] if the payload exceeds the maximum TLS
+    /// plaintext record length.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        if self.payload.len() > MAX_TLS_PLAINTEXT_LEN {
+            return Err(Error::LengthOverflow {
+                max: MAX_TLS_PLAINTEXT_LEN,
+                actual: self.payload.len(),
+            });
+        }
+
+        let payload_length = self.payload.len() as u16;
+        let mut bytes = Vec::with_capacity(TLS_RECORD_HEADER_LEN + self.payload.len());
+        bytes.push(self.content_type.as_u8());
+        bytes.extend_from_slice(&self.legacy_version.to_be_bytes());
+        bytes.extend_from_slice(&payload_length.to_be_bytes());
+        bytes.extend_from_slice(self.payload);
+        Ok(bytes)
     }
 
     /// Returns the record content type.

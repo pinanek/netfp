@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use crate::{
     error::Error,
     tls::{
-        AlpnProtocol, Grease, TlsCipherSuite, TlsClientHello, TlsExtension, TlsExtensionType,
-        TlsPskKeyExchangeMode, TlsServerHello, TlsSignatureAlgorithm, TlsSupportedGroup,
-        TlsVersion,
+        AlpnProtocol, Grease, TlsCipherSuite, TlsClientHello, TlsContentType, TlsExtension,
+        TlsExtensionType, TlsHandshake, TlsHandshakeType, TlsPskKeyExchangeMode, TlsRecord,
+        TlsServerHello, TlsSignatureAlgorithm, TlsSupportedGroup, TlsVersion,
     },
     utils::random_32_bytes,
 };
@@ -494,13 +494,12 @@ impl JarmProbeDefinition {
             self.protocol_version
         };
 
-        TlsClientHello::new(
-            self.protocol_version,
-            record_version,
-            cipher_suites,
-            self.extensions()?,
-        )?
-        .to_bytes()
+        let client_hello =
+            TlsClientHello::new(self.protocol_version, cipher_suites, self.extensions()?)?;
+        let client_hello_body = client_hello.try_to_bytes()?;
+        let handshake = TlsHandshake::new(TlsHandshakeType::CLIENT_HELLO, &client_hello_body);
+        let handshake_bytes = handshake.try_to_bytes()?;
+        TlsRecord::new(TlsContentType::HANDSHAKE, record_version, &handshake_bytes).try_to_bytes()
     }
 
     fn extensions(&self) -> Result<Vec<TlsExtension>, Error> {
@@ -702,8 +701,8 @@ impl JarmProbeDefinition {
 /// };
 ///
 /// use netfp::{
-///     Error, JarmFingerprint,
-///     tls::{ServerHelloDecoder, TlsRecord, TlsServerHello},
+///     JarmFingerprint,
+///     tls::{ServerHelloDecoder, TlsServerHello},
 /// };
 ///
 /// fn scan_probe(
@@ -714,7 +713,6 @@ impl JarmProbeDefinition {
 ///     stream.write_all(probe)?;
 ///
 ///     let mut decoder = ServerHelloDecoder::new();
-///     let mut buffered = Vec::new();
 ///     let mut read_buffer = [0; 4096];
 ///
 ///     loop {
@@ -722,23 +720,10 @@ impl JarmProbeDefinition {
 ///         if bytes_read == 0 {
 ///             return Ok(None);
 ///         }
-///         buffered.extend_from_slice(&read_buffer[..bytes_read]);
 ///
-///         let mut consumed = 0;
-///         while consumed < buffered.len() {
-///             let (record, record_length) =
-///                 match TlsRecord::try_from_bytes(&buffered[consumed..]) {
-///                     Ok(record) => record,
-///                     Err(Error::UnexpectedEof { .. }) => break,
-///                     Err(error) => return Err(error.into()),
-///                 };
-///             consumed += record_length;
-///
-///             if let Some(server_hello) = decoder.push_record(&record)? {
-///                 return Ok(Some(server_hello));
-///             }
+///         if let Some(server_hello) = decoder.push_bytes(&read_buffer[..bytes_read])? {
+///             return Ok(Some(server_hello));
 ///         }
-///         buffered.drain(..consumed);
 ///     }
 /// }
 ///

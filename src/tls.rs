@@ -1,9 +1,11 @@
 mod client_hello;
+mod handshake;
 mod reader;
 mod record;
 mod server_hello;
 
 pub use client_hello::TlsClientHello;
+pub use handshake::TlsHandshake;
 pub use reader::TlsReader;
 pub use record::TlsRecord;
 pub use server_hello::{ServerHelloDecoder, TlsServerHello};

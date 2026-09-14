@@ -1,14 +1,19 @@
 use crate::{
     error::Error,
     tls::{
-        HANDSHAKE_HEADER_LEN, TlsCipherSuite, TlsContentType, TlsExtension, TlsExtensionType,
+        TlsCipherSuite, TlsContentType, TlsExtension, TlsExtensionType, TlsHandshake,
         TlsHandshakeType, TlsReader, TlsRecord, TlsVersion,
     },
 };
 
+/// Incrementally decodes a TLS `ServerHello` from raw bytes or parsed records.
+///
+/// The decoder buffers incomplete TLS records and handshake fragments across
+/// calls.
 #[derive(Debug)]
 pub struct ServerHelloDecoder {
-    buffer: Vec<u8>,
+    record_buffer: Vec<u8>,
+    handshake_buffer: Vec<u8>,
 }
 
 impl Default for ServerHelloDecoder {
@@ -18,97 +23,95 @@ impl Default for ServerHelloDecoder {
 }
 
 impl ServerHelloDecoder {
+    /// Creates an empty decoder.
     pub fn new() -> Self {
-        Self { buffer: Vec::new() }
+        Self {
+            record_buffer: Vec::new(),
+            handshake_buffer: Vec::new(),
+        }
     }
 
+    /// Adds raw TLS bytes and returns a decoded `ServerHello` when complete.
+    ///
+    /// Input may contain a partial record, multiple records, or a handshake
+    /// split across records. Incomplete data is retained for the next call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a complete record or handshake is malformed.
+    pub fn push_bytes(&mut self, bytes: &[u8]) -> Result<Option<TlsServerHello>, Error> {
+        self.record_buffer.extend_from_slice(bytes);
+
+        loop {
+            let (record, consumed) = match TlsRecord::try_from_bytes(&self.record_buffer) {
+                Ok(record) => record,
+                Err(Error::UnexpectedEof { .. }) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+
+            let is_handshake = record.content_type() == &TlsContentType::HANDSHAKE;
+            if is_handshake {
+                self.handshake_buffer.extend_from_slice(record.payload());
+            }
+            self.record_buffer.drain(..consumed);
+
+            if is_handshake {
+                if let Some(server_hello) = self.try_parse()? {
+                    return Ok(Some(server_hello));
+                }
+            }
+        }
+    }
+
+    /// Adds one parsed TLS record and returns a decoded `ServerHello` when complete.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the accumulated handshake is malformed.
     pub fn push_record(&mut self, record: &TlsRecord<'_>) -> Result<Option<TlsServerHello>, Error> {
         if record.content_type() != &TlsContentType::HANDSHAKE {
             return Ok(None);
         }
 
-        self.buffer.extend_from_slice(record.payload());
+        self.handshake_buffer.extend_from_slice(record.payload());
 
         self.try_parse()
     }
 
     fn try_parse(&mut self) -> Result<Option<TlsServerHello>, Error> {
-        if self.buffer.len() < HANDSHAKE_HEADER_LEN {
-            return Ok(None);
-        }
+        let (handshake, consumed) = match TlsHandshake::try_from_bytes(&self.handshake_buffer) {
+            Ok(handshake) => handshake,
+            Err(Error::UnexpectedEof { .. }) => return Ok(None),
+            Err(error) => return Err(error),
+        };
 
-        let mut reader = TlsReader::new(&self.buffer);
-
-        let handshake_type = TlsHandshakeType(reader.read_u8()?);
-        if handshake_type != TlsHandshakeType::SERVER_HELLO {
+        if handshake.handshake_type() != TlsHandshakeType::SERVER_HELLO {
             return Err(Error::Malformed("expected ServerHello"));
         }
 
-        let body_len = reader.read_u24()?;
-
-        let total_len =
-            HANDSHAKE_HEADER_LEN
-                .checked_add(body_len)
-                .ok_or(Error::LengthOverflow {
-                    max: usize::MAX,
-                    actual: usize::MAX,
-                })?;
-
-        // ServerHello spans another TLS record.
-        if self.buffer.len() < total_len {
-            return Ok(None);
-        }
-
-        let server_hello =
-            TlsServerHello::try_from_bytes(&self.buffer[HANDSHAKE_HEADER_LEN..total_len])?;
-
-        self.buffer.clear();
+        let server_hello = TlsServerHello::try_from_bytes(handshake.body())?;
+        self.handshake_buffer.drain(..consumed);
 
         Ok(Some(server_hello))
     }
 }
 
-/// A TLS `ServerHello` handshake message.
+/// A TLS `ServerHello` handshake body.
 ///
-/// `ServerHelloDecoder` removes the TLS record and handshake headers before
-/// passing the `ServerHello` body to [`TlsServerHello::try_from_bytes`].
+/// This type represents only the `ServerHello` body. It does not include the
+/// TLS handshake header or TLS record header.
 ///
 /// ```text
-/// +-----------------------------------------------------+
-/// | Content Type          1 byte    Handshake (0x16)    |
-/// | Legacy Record Version 2 bytes                       |
-/// | Record Length         2 bytes                       |
-/// +-----------------------------------------------------+
-/// | Handshake Message                                   |
-/// |                                                     |
-/// | +-------------------------------------------------+ |
-/// | | Handshake Type      1 byte    ServerHello (0x02)| |
-/// | | Handshake Length    3 bytes   (u24)             | |
-/// | +-------------------------------------------------+ |
-/// | | ServerHello                                     | |
-/// | |                                                 | |
-/// | | Legacy Version       2 bytes                    | |
-/// | | Random              32 bytes                    | |
-/// | |                                                 | |
-/// | | Session ID Length    1 byte                     | |
-/// | | Session ID           N bytes                    | |
-/// | |                                                 | |
-/// | | Cipher Suite         2 bytes                    | |
-/// | | Compression Method   1 byte                     | |
-/// | |                                                 | |
-/// | | Extensions Length    2 bytes                    | |
-/// | |                                                 | |
-/// | | +---------------------------------------------+ | |
-/// | | | Extension                                   | | |
-/// | | | +-----------------------------------------+ | | |
-/// | | | | Type       2 bytes                      | | | |
-/// | | | | Length     2 bytes                      | | | |
-/// | | | | Data       N bytes                      | | | |
-/// | | | +-----------------------------------------+ | | |
-/// | | |                     ...                     | | |
-/// | | +---------------------------------------------+ | |
-/// | +-------------------------------------------------+ |
-/// +-----------------------------------------------------+
+/// +--------------------------------------------------+
+/// | Legacy Version       2 bytes                     |
+/// | Random              32 bytes                     |
+/// | Session ID Length    1 byte                      |
+/// | Session ID           N bytes                     |
+/// | Cipher Suite         2 bytes                     |
+/// | Compression Method   1 byte                      |
+/// | Extensions Length    2 bytes                     |
+/// | Extensions           N bytes                     |
+/// +--------------------------------------------------+
 /// ```
 #[derive(Debug)]
 pub struct TlsServerHello {
@@ -125,7 +128,7 @@ impl TlsServerHello {
     ///
     /// The input must begin with the legacy version field; it must not include
     /// the TLS record header or the handshake message header. Use
-    /// [`ServerHelloDecoder`] when processing complete TLS records.
+    /// [`ServerHelloDecoder`] when processing record-layer data.
     ///
     /// # Errors
     ///
@@ -336,25 +339,19 @@ mod tests {
     }
 
     #[test]
-    fn decoder_reassembles_a_server_hello_across_records() {
+    fn decoder_reassembles_partial_records_and_a_fragmented_server_hello() {
         let body = server_hello_body(&[]);
-        let mut handshake = vec![TlsHandshakeType::SERVER_HELLO.as_u8()];
-        handshake.extend_from_slice(&[
-            ((body.len() >> 16) & 0xff) as u8,
-            ((body.len() >> 8) & 0xff) as u8,
-            (body.len() & 0xff) as u8,
-        ]);
-        handshake.extend_from_slice(&body);
+        let handshake = TlsHandshake::new(TlsHandshakeType::SERVER_HELLO, &body)
+            .try_to_bytes()
+            .unwrap();
 
         let split = 12;
-        let first = tls_record(&handshake[..split]);
-        let second = tls_record(&handshake[split..]);
-        let (first, _) = TlsRecord::try_from_bytes(&first).unwrap();
-        let (second, _) = TlsRecord::try_from_bytes(&second).unwrap();
+        let mut records = tls_record(&handshake[..split]);
+        records.extend_from_slice(&tls_record(&handshake[split..]));
         let mut decoder = ServerHelloDecoder::new();
 
-        assert!(decoder.push_record(&first).unwrap().is_none());
-        let hello = decoder.push_record(&second).unwrap().unwrap();
+        assert!(decoder.push_bytes(&records[..3]).unwrap().is_none());
+        let hello = decoder.push_bytes(&records[3..]).unwrap().unwrap();
         assert_eq!(hello.tls_version(), TlsVersion::TLS12);
     }
 
