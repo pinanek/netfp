@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/pinanek/netfp/compare/v0.2.0...v0.2.1) - 2026-09-15
+
+### Other
+
+- expand JA3 documentation
+- simplify error documentation
+- remove redundant comments
+
 ## [0.2.0](https://github.com/pinanek/netfp/compare/v0.1.1...v0.2.0) - 2026-09-14
 
 ### Added
