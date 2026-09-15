@@ -1,3 +1,12 @@
+//! Rust implementation of the JA3 and JA3S TLS fingerprinting algorithms.
+//!
+//! This implementation is based on the original Salesforce JA3 project:
+//! <https://github.com/salesforce/ja3>.
+//!
+//! Original JA3 is Copyright (c) Salesforce.com, Inc. and licensed under the
+//! BSD 3-Clause License:
+//! <https://github.com/salesforce/ja3/blob/master/LICENSE.txt>.
+
 use md5::{Digest, Md5};
 
 use crate::{
@@ -6,6 +15,27 @@ use crate::{
 };
 
 /// Computes the JA3 fingerprint of a parsed TLS `ClientHello`.
+///
+/// # Examples
+///
+/// ```
+/// use netfp::{
+///     ja3_fingerprint,
+///     tls::{TlsCipherSuite, TlsClientHello, TlsVersion},
+/// };
+///
+/// let client_hello = TlsClientHello::new(
+///     TlsVersion::TLS12,
+///     vec![TlsCipherSuite::TLS_AES_128_GCM_SHA256],
+///     vec![],
+/// )?;
+///
+/// assert_eq!(
+///     ja3_fingerprint(&client_hello)?,
+///     "ea1e247991e541e39bf918cb7cfa5139",
+/// );
+/// # Ok::<(), netfp::Error>(())
+/// ```
 ///
 /// # Errors
 ///
@@ -95,6 +125,29 @@ pub fn ja3_fingerprint(client_hello: &TlsClientHello) -> Result<String, Error> {
 }
 
 /// Computes the JA3S fingerprint of a parsed TLS `ServerHello`.
+///
+/// # Examples
+///
+/// ```
+/// use netfp::{
+///     ja3s_fingerprint,
+///     tls::{TlsCipherSuite, TlsServerHello, TlsVersion},
+/// };
+///
+/// let mut body = Vec::new();
+/// body.extend_from_slice(&TlsVersion::TLS12.to_be_bytes());
+/// body.extend_from_slice(&[0; 32]);
+/// body.push(0); // Empty legacy session ID.
+/// body.extend_from_slice(&TlsCipherSuite::TLS_AES_128_GCM_SHA256.to_be_bytes());
+/// body.push(0); // Null compression method.
+///
+/// let server_hello = TlsServerHello::try_from_bytes(&body)?;
+/// assert_eq!(
+///     ja3s_fingerprint(&server_hello),
+///     "e8c07683aecf9b16e8e33f10a5161e4e",
+/// );
+/// # Ok::<(), netfp::Error>(())
+/// ```
 pub fn ja3s_fingerprint(server_hello: &TlsServerHello) -> String {
     let extensions = server_hello
         .extensions()
