@@ -1,26 +1,8 @@
 use core::error::Error as BaseError;
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-/// An error produced while encoding or decoding structured binary data.
-///
-/// # Examples
-///
-/// Errors can be inspected to distinguish incomplete input from structurally
-/// invalid data:
-///
-/// ```
-/// use netfp::Error;
-///
-/// let error = Error::UnexpectedEof {
-///     needed: 4,
-///     remaining: 2,
-/// };
-///
-/// assert_eq!(
-///     error.to_string(),
-///     "unexpected end of data: needed 4 bytes, but only 2 remain",
-/// );
-/// ```
+/// Errors that can occur while constructing, encoding, or parsing network
+/// protocol data.
 #[derive(Debug)]
 pub enum Error {
     /// An encoded value is too large for its length field or format limit.
@@ -39,8 +21,7 @@ pub enum Error {
         remaining: usize,
     },
 
-    /// The input is complete enough to inspect but violates the expected
-    /// structure or a semantic constraint enforced by this crate.
+    /// The data violates an expected format or constraint.
     Malformed(
         /// Static description of the violated constraint.
         &'static str,
