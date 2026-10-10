@@ -4,10 +4,23 @@ use crate::{
     utils::random_32_bytes,
 };
 
-/// A TLS `ClientHello` handshake body.
+/// A TLS client hello body, without [`crate::tls::TlsHandshake`] or [`crate::tls::TlsRecord`] headers.
 ///
-/// This type represents only the `ClientHello` body. It does not include the
-/// TLS handshake header or TLS record header.
+/// # Examples
+///
+/// ```
+/// use netfp::tls::{TlsCipherSuite, TlsClientHello, TlsVersion};
+///
+/// let hello = TlsClientHello::new(
+///     TlsVersion::TLS12,
+///     vec![TlsCipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256],
+///     vec![],
+/// )?;
+/// let bytes = hello.try_to_bytes()?;
+/// let parsed = TlsClientHello::try_from_bytes(&bytes)?;
+/// assert_eq!(parsed.cipher_suites(), hello.cipher_suites());
+/// # Ok::<(), netfp::Error>(())
+/// ```
 ///
 /// ```text
 /// +--------------------------------------------------+
@@ -34,9 +47,10 @@ pub struct TlsClientHello {
 }
 
 impl TlsClientHello {
-    /// Creates a new TLS `ClientHello` body.
+    /// Creates a new [`TlsClientHello`] body.
     ///
-    /// TLS 1.3 is encoded with the TLS 1.2 legacy version.
+    /// Generates random and session ID values and uses null compression.
+    /// TLS 1.3 uses the TLS 1.2 legacy version; supply required extensions yourself.
     ///
     /// # Errors
     ///
@@ -76,10 +90,9 @@ impl TlsClientHello {
         })
     }
 
-    /// Parses a TLS `ClientHello` body.
+    /// Parses a [`TlsClientHello`] body.
     ///
-    /// The input must begin with the legacy version and must not include a TLS
-    /// handshake header or record header.
+    /// Pass the complete body without [`crate::tls::TlsHandshake`] or [`crate::tls::TlsRecord`] headers.
     ///
     /// # Errors
     ///
@@ -148,7 +161,7 @@ impl TlsClientHello {
         })
     }
 
-    /// Encodes this `ClientHello` body.
+    /// Encodes this [`TlsClientHello`] body without [`crate::tls::TlsHandshake`] or [`crate::tls::TlsRecord`] headers.
     ///
     /// # Errors
     ///
@@ -186,7 +199,7 @@ impl TlsClientHello {
         Ok(body)
     }
 
-    /// Returns the legacy version carried in the `ClientHello` body.
+    /// Returns the legacy version carried in the [`TlsClientHello`] body.
     pub const fn legacy_version(&self) -> TlsVersion {
         self.legacy_version
     }
@@ -201,7 +214,7 @@ impl TlsClientHello {
         &self.session_id
     }
 
-    /// Returns the offered cipher suites in wire order.
+    /// Returns the offered [`TlsCipherSuite`] values in wire order.
     pub fn cipher_suites(&self) -> &[TlsCipherSuite] {
         &self.cipher_suites
     }
@@ -211,7 +224,7 @@ impl TlsClientHello {
         &self.compression_methods
     }
 
-    /// Returns the extensions in wire order.
+    /// Returns the [`TlsExtension`] values in wire order.
     pub fn extensions(&self) -> &[TlsExtension] {
         &self.extensions
     }

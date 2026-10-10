@@ -6,6 +6,21 @@ use crate::{
 
 /// A borrowed TLS handshake message.
 ///
+/// # Examples
+///
+/// ```
+/// use netfp::tls::{TlsHandshake, TlsHandshakeType};
+///
+/// let encoded = TlsHandshake::new(TlsHandshakeType::CLIENT_HELLO, &[1, 2, 3])
+///     .try_to_bytes()?;
+/// let (message, consumed) = TlsHandshake::try_from_bytes(&encoded)?;
+/// assert_eq!(message.handshake_type(), TlsHandshakeType::CLIENT_HELLO);
+/// assert_eq!(message.body(), &[1, 2, 3]);
+/// assert_eq!(consumed, encoded.len());
+/// # Ok::<(), netfp::Error>(())
+/// ```
+///
+///
 /// ```text
 /// +----------------------------------+
 /// | Handshake Type      1 byte       |
@@ -19,7 +34,7 @@ pub struct TlsHandshake<'a> {
 }
 
 impl<'a> TlsHandshake<'a> {
-    /// Creates a handshake message that borrows `body`.
+    /// Creates a [`TlsHandshake`] that borrows `body`.
     pub const fn new(handshake_type: TlsHandshakeType, body: &'a [u8]) -> Self {
         Self {
             handshake_type,
@@ -27,10 +42,9 @@ impl<'a> TlsHandshake<'a> {
         }
     }
 
-    /// Parses the first complete TLS handshake message in `bytes`.
+    /// Parses the first complete [`TlsHandshake`] in `bytes`.
     ///
-    /// The returned `usize` is the number of bytes consumed. Any remaining
-    /// bytes may contain subsequent handshake messages.
+    /// Returns the message and its byte length, leaving subsequent bytes unparsed.
     ///
     /// # Errors
     ///
@@ -72,7 +86,7 @@ impl<'a> TlsHandshake<'a> {
         ))
     }
 
-    /// Encodes this handshake message, including its four-byte header.
+    /// Encodes this [`TlsHandshake`], including its four-byte header.
     ///
     /// # Errors
     ///
@@ -87,7 +101,7 @@ impl<'a> TlsHandshake<'a> {
         Ok(bytes)
     }
 
-    /// Returns the handshake message type.
+    /// Returns the message's [`TlsHandshakeType`].
     pub const fn handshake_type(&self) -> TlsHandshakeType {
         self.handshake_type
     }

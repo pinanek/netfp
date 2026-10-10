@@ -2,7 +2,7 @@ use crate::error::Error;
 
 /// A bounds-checked reader for TLS wire-format data.
 ///
-/// `TlsReader` advances through a borrowed byte slice and decodes unsigned
+/// [`TlsReader`] advances through a borrowed byte slice and decodes unsigned
 /// integers in network byte order. Reads never advance the cursor when there
 /// is not enough input available.
 ///

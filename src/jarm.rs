@@ -1,8 +1,7 @@
 //! Rust implementation of the JARM active TLS server fingerprinting algorithm.
 //!
 //! This implementation is based on the original Salesforce JARM 1.0 project:
-//! <https://github.com/salesforce/jarm>. The reference Python implementation is
-//! included in this repository at `jarm/jarm.py`.
+//! <https://github.com/salesforce/jarm>.
 //!
 //! Original JARM is Copyright (c) 2020, Salesforce.com, Inc. and licensed
 //! under the BSD 3-Clause License:
@@ -787,18 +786,22 @@ fn jarm_probe_definitions(host: impl Into<String>) -> Vec<JarmProbeDefinition> {
     ]
 }
 
-/// Builds the ten JARM `ClientHello` probes in canonical order.
+/// Builds ten JARM probes in the required order.
 ///
-/// Each returned byte vector is a complete TLS record ready to send over a
-/// separate TCP connection to the target server.
+/// Supply a hostname without a scheme or port. Send each probe over a separate
+/// TCP connection; this function does not perform network I/O.
 ///
-/// This function does not resolve the host or open any network connections.
+/// # Examples
+///
+/// ```
+/// let probes = netfp::generate_jarm_probes("example.com")?;
+/// assert_eq!(probes.len(), 10);
+/// # Ok::<(), netfp::Error>(())
+/// ```
 ///
 /// # Errors
 ///
-/// Returns [`Error::LengthOverflow`] when the host or an encoded TLS field
-/// cannot fit in its protocol length field, or [`Error::Malformed`] if a
-/// generated `ClientHello` is invalid.
+/// Returns an error if the host or encoded probe exceeds a TLS size limit.
 pub fn generate_jarm_probes(host: impl Into<String>) -> Result<Vec<Vec<u8>>, Error> {
     jarm_probe_definitions(host)
         .iter()
@@ -806,65 +809,21 @@ pub fn generate_jarm_probes(host: impl Into<String>) -> Result<Vec<Vec<u8>>, Err
         .collect()
 }
 
-/// Produces a JARM fingerprint from probe responses.
+/// Computes a 62-character JARM fingerprint from [`TlsServerHello`] probe responses.
 ///
-/// JARM actively fingerprints a TLS server by sending ten specially ordered
-/// `ClientHello` messages. The selected cipher suite, legacy TLS version,
-/// ALPN protocol, and extension types from each response are combined into a
-/// 62-character fingerprint.
+/// Keep responses in [`generate_jarm_probes`] order, using `None` for failures.
+/// Missing or invalid responses are treated as absent; entries beyond ten are
+/// ignored. If all responses are absent, the result is 62 zeroes.
 ///
 /// # Examples
 ///
-/// ```no_run
-/// use std::{
-///     io::{Read, Write},
-///     net::TcpStream,
-/// };
-///
-/// use netfp::{
-///     generate_jarm_probes, jarm_fingerprint,
-///     tls::{ServerHelloDecoder, TlsServerHello},
-/// };
-///
-/// fn scan_probe(
-///     address: &str,
-///     probe: &[u8],
-/// ) -> Result<Option<TlsServerHello>, Box<dyn std::error::Error>> {
-///     let mut stream = TcpStream::connect(address)?;
-///     stream.write_all(probe)?;
-///
-///     let mut decoder = ServerHelloDecoder::new();
-///     let mut read_buffer = [0; 4096];
-///
-///     loop {
-///         let bytes_read = stream.read(&mut read_buffer)?;
-///         if bytes_read == 0 {
-///             return Ok(None);
-///         }
-///
-///         if let Some(server_hello) = decoder.push_bytes(&read_buffer[..bytes_read])? {
-///             return Ok(Some(server_hello));
-///         }
-///     }
-/// }
-///
-/// let responses = generate_jarm_probes("example.com")?
-///     .iter()
-///     .map(|probe| scan_probe("example.com:443", probe))
-///     .collect::<Result<Vec<_>, _>>()?;
-/// let fingerprint = jarm_fingerprint(&responses);
-///
-/// println!("{fingerprint}");
-/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+/// use netfp::{jarm_fingerprint, tls::TlsServerHello};
 ///
-/// Responses must be supplied in the same order as the records returned by
-/// [`generate_jarm_probes`]. A missing response is represented by `None`.
-/// Missing entries at the end of the slice are also treated as absent
-/// responses; entries beyond the first ten are ignored.
-///
-/// The returned value is always 62 lowercase ASCII characters. If every
-/// response is absent, it consists of 62 zeroes.
+/// let responses: Vec<Option<TlsServerHello>> = (0..10).map(|_| None).collect();
+/// let fingerprint = jarm_fingerprint(&responses);
+/// assert_eq!(fingerprint, "0".repeat(62));
+/// ```
 pub fn jarm_fingerprint(server_hellos: &[Option<TlsServerHello>]) -> String {
     let mut received_server_hello = false;
     let mut cipher_and_version = String::with_capacity(JARM_PROBE_COUNT * 3);

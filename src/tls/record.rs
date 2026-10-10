@@ -3,20 +3,7 @@ use crate::{
     tls::{MAX_TLS_PLAINTEXT_LEN, TLS_RECORD_HEADER_LEN, TlsContentType, TlsReader, TlsVersion},
 };
 
-/// A borrowed TLS record.
-///
-/// ```text
-/// +--------------------------------------------------+
-/// | Content Type           1 byte                    |
-/// | Legacy Record Version  2 bytes                   |
-/// | Payload Length         2 bytes                   |
-/// +--------------------------------------------------+
-/// | Payload                N bytes                   |
-/// +--------------------------------------------------+
-/// ```
-///
-/// The payload borrows from the encoded input, so parsing a record does not
-/// allocate or copy its contents.
+/// A TLS record with a borrowed payload.
 ///
 /// # Examples
 ///
@@ -32,6 +19,16 @@ use crate::{
 /// assert_eq!(consumed, bytes.len());
 /// # Ok::<(), netfp::Error>(())
 /// ```
+///
+/// ```text
+/// +--------------------------------------------------+
+/// | Content Type           1 byte                    |
+/// | Legacy Record Version  2 bytes                   |
+/// | Payload Length         2 bytes                   |
+/// +--------------------------------------------------+
+/// | Payload                N bytes                   |
+/// +--------------------------------------------------+
+/// ```
 pub struct TlsRecord<'a> {
     content_type: TlsContentType,
     legacy_version: TlsVersion,
@@ -39,7 +36,9 @@ pub struct TlsRecord<'a> {
 }
 
 impl<'a> TlsRecord<'a> {
-    /// Creates a TLS record that borrows `payload`.
+    /// Creates a [`TlsRecord`] that borrows `payload` without validating its size.
+    ///
+    /// The plaintext size limit is enforced by [`Self::try_to_bytes`].
     pub const fn new(
         content_type: TlsContentType,
         legacy_version: TlsVersion,
@@ -52,11 +51,9 @@ impl<'a> TlsRecord<'a> {
         }
     }
 
-    /// Parses the first complete TLS record in `bytes`.
+    /// Parses the first complete [`TlsRecord`] in `bytes`.
     ///
-    /// The returned `usize` is the number of bytes consumed by the record.
-    /// Any bytes after that offset belong to subsequent records and are not
-    /// inspected.
+    /// Returns the record and its byte length, leaving subsequent bytes unparsed.
     ///
     /// # Errors
     ///
@@ -107,7 +104,7 @@ impl<'a> TlsRecord<'a> {
         ))
     }
 
-    /// Encodes this TLS record.
+    /// Encodes this [`TlsRecord`].
     ///
     /// # Errors
     ///
@@ -130,12 +127,12 @@ impl<'a> TlsRecord<'a> {
         Ok(bytes)
     }
 
-    /// Returns the record content type.
+    /// Returns the record's [`TlsContentType`].
     pub fn content_type(&self) -> &TlsContentType {
         &self.content_type
     }
 
-    /// Returns the legacy record-layer TLS version.
+    /// Returns the record's legacy [`TlsVersion`].
     pub fn legacy_version(&self) -> &TlsVersion {
         &self.legacy_version
     }

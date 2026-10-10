@@ -1,3 +1,7 @@
+//! Types for parsing and encoding TLS messages.
+//!
+//! Use [`ServerHelloDecoder`] to parse server responses from network reads.
+
 mod client_hello;
 mod handshake;
 mod reader;
@@ -19,7 +23,7 @@ const HANDSHAKE_HEADER_LEN: usize = 4;
 
 const TLS_RECORD_HEADER_LEN: usize = 5;
 
-/// Available versions of TLS
+/// A TLS version identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TlsVersion(u16);
 
@@ -57,19 +61,13 @@ impl TlsVersion {
 }
 
 /// A reserved TLS GREASE code point.
-///
-/// GREASE values are used to detect implementations that incorrectly reject
-/// unknown protocol identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Grease(u16);
 
 impl Grease {
     /// Returns a randomly selected GREASE value.
     ///
-    /// The returned value is always one of the reserved GREASE code points:
-    /// `[0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a, 0x8a8a, 0x9a9a, 0xaaaa, 0xbaba, 0xcaca, 0xdada, 0xeaea, 0xfafa]`
-    ///
-    /// See: <https://datatracker.ietf.org/doc/html/draft-davidben-tls-grease-01#page-5>
+    /// See [RFC 8701](https://www.rfc-editor.org/rfc/rfc8701).
     pub fn random() -> Self {
         let n = u16::from(random_byte() & 0x0f);
         let byte = (n << 4) | 0x0a;
@@ -103,7 +101,7 @@ impl Grease {
     }
 }
 
-/// The content type of a TLS record.
+/// The content type of a [`TlsRecord`].
 ///
 /// See: <https://www.iana.org/assignments/tls-parameters#tls-parameters-5>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,7 +116,7 @@ impl TlsContentType {
     }
 }
 
-/// Handshake type of a TLS record
+/// The message type of a [`TlsHandshake`].
 ///
 /// See: <https://www.iana.org/assignments/tls-parameters#tls-parameters-7>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -135,9 +133,6 @@ impl TlsHandshakeType {
 }
 
 /// A TLS cipher suite identifier.
-///
-/// Any 16-bit value can be represented, including unknown, reserved,
-/// experimental, and GREASE values.
 ///
 /// See: <https://www.iana.org/assignments/tls-parameters#tls-parameters-4>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -280,9 +275,6 @@ impl From<TlsCipherSuite> for u16 {
 
 /// A TLS extension type.
 ///
-/// Any 16-bit extension identifier can be represented, including unknown,
-/// reserved, experimental, and GREASE values.
-///
 /// See: <https://www.iana.org/assignments/tls-extensiontype-values#tls-extensiontype-values-1>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TlsExtensionType(pub u16);
@@ -414,8 +406,6 @@ impl TlsPskKeyExchangeMode {
 
 /// A generic TLS extension.
 ///
-/// A TLS extension consists of a 16-bit extension type, a 16-bit length field,
-/// and the extension-specific payload.
 ///
 /// ```text
 /// +----------------------+
@@ -433,7 +423,7 @@ pub struct TlsExtension {
 }
 
 impl TlsExtension {
-    /// Creates a new TLS extension.
+    /// Creates a [`TlsExtension`] with a [`TlsExtensionType`] and payload.
     ///
     /// # Errors
     ///
@@ -451,9 +441,8 @@ impl TlsExtension {
         })
     }
 
-    /// Encodes this TLS extension into its wire representation.
+    /// Encodes this [`TlsExtension`] into its wire representation.
     ///
-    /// The returned bytes in network byte order.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut encoded_extension = Vec::with_capacity(4 + self.extension_data.len());
 
@@ -471,7 +460,7 @@ impl TlsExtension {
         &self.extension_data
     }
 
-    /// Returns the extension type identifier.
+    /// Returns the [`TlsExtensionType`] identifier.
     pub fn extension_type(&self) -> TlsExtensionType {
         self.extension_type
     }

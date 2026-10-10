@@ -6,10 +6,30 @@ use crate::{
     },
 };
 
-/// Incrementally decodes a TLS `ServerHello` from raw bytes or parsed records.
+/// Decodes a [`TlsServerHello`] across successive network reads.
 ///
-/// The decoder buffers incomplete TLS records and handshake fragments across
-/// calls.
+/// Use a fresh decoder per connection and discard it after an error.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::io::Read;
+/// use netfp::tls::{ServerHelloDecoder, TlsServerHello};
+///
+/// fn read_hello(mut stream: impl Read) -> Result<Option<TlsServerHello>, Box<dyn std::error::Error>> {
+///     let mut decoder = ServerHelloDecoder::new();
+///     let mut buffer = [0; 4096];
+///     loop {
+///         let count = stream.read(&mut buffer)?;
+///         if count == 0 {
+///             return Ok(None);
+///         }
+///         if let Some(hello) = decoder.push_bytes(&buffer[..count])? {
+///             return Ok(Some(hello));
+///         }
+///     }
+/// }
+/// ```
 #[derive(Debug)]
 pub struct ServerHelloDecoder {
     record_buffer: Vec<u8>,
@@ -31,10 +51,10 @@ impl ServerHelloDecoder {
         }
     }
 
-    /// Adds raw TLS bytes and returns a decoded `ServerHello` when complete.
+    /// Adds raw TLS bytes and returns a decoded [`TlsServerHello`] when complete.
     ///
-    /// Input may contain a partial record, multiple records, or a handshake
-    /// split across records. Incomplete data is retained for the next call.
+    /// Buffers incomplete input and returns `Ok(None)` until a hello is complete.
+    /// Non-handshake records are ignored.
     ///
     /// # Errors
     ///
@@ -63,7 +83,10 @@ impl ServerHelloDecoder {
         }
     }
 
-    /// Adds one parsed TLS record and returns a decoded `ServerHello` when complete.
+    /// Adds one parsed [`TlsRecord`] and returns a decoded [`TlsServerHello`] when complete.
+    ///
+    /// Handshake fragments are retained across calls. Non-handshake records
+    /// return `Ok(None)` without changing the handshake buffer.
     ///
     /// # Errors
     ///
@@ -96,10 +119,7 @@ impl ServerHelloDecoder {
     }
 }
 
-/// A TLS `ServerHello` handshake body.
-///
-/// This type represents only the `ServerHello` body. It does not include the
-/// TLS handshake header or TLS record header.
+/// A parsed TLS server hello body, without [`TlsHandshake`] or [`TlsRecord`] headers.
 ///
 /// ```text
 /// +--------------------------------------------------+
@@ -124,11 +144,10 @@ pub struct TlsServerHello {
 }
 
 impl TlsServerHello {
-    /// Parses a `ServerHello` handshake body.
+    /// Parses a [`TlsServerHello`] body.
     ///
-    /// The input must begin with the legacy version field; it must not include
-    /// the TLS record header or the handshake message header. Use
-    /// [`ServerHelloDecoder`] when processing record-layer data.
+    /// Pass the complete body without [`TlsHandshake`] or [`TlsRecord`] headers. For network
+    /// reads, use [`ServerHelloDecoder`] instead.
     ///
     /// # Errors
     ///
@@ -214,15 +233,12 @@ impl TlsServerHello {
         })
     }
 
-    /// Returns the legacy version carried in the `ServerHello` body.
+    /// Returns the legacy version carried in the [`TlsServerHello`] body.
     pub const fn legacy_version(&self) -> TlsVersion {
         self.legacy_version
     }
 
     /// Returns the negotiated TLS version.
-    ///
-    /// For TLS 1.3, this is read from the `supported_versions` extension. For
-    /// earlier versions, it is the same as [`Self::legacy_version`].
     pub const fn tls_version(&self) -> TlsVersion {
         self.tls_version
     }
@@ -237,17 +253,17 @@ impl TlsServerHello {
         &self.session_id
     }
 
-    /// Returns the extensions in their original wire order.
+    /// Returns the [`TlsExtension`] values in their original wire order.
     pub fn extensions(&self) -> &[TlsExtension] {
         &self.extensions
     }
 
-    /// Returns the cipher suite selected by the server.
+    /// Returns the [`TlsCipherSuite`] selected by the server.
     pub fn cipher_suite(&self) -> &TlsCipherSuite {
         &self.cipher_suite
     }
 
-    /// Returns the ALPN protocol selected by the server, if present.
+    /// Returns the UTF-8 ALPN protocol in this hello, or `None` if absent.
     ///
     /// # Errors
     ///

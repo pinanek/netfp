@@ -1,5 +1,8 @@
 #![doc = include_str!("../README.md")]
 
+//! See [`tls`] for message parsing and encoding. Fingerprint functions are
+//! available with the `ja3` and `jarm` features, both enabled by default.
+
 mod error;
 #[cfg(feature = "ja3")]
 mod ja3;

@@ -14,7 +14,7 @@ use crate::{
     tls::{Grease, TlsClientHello, TlsExtensionType, TlsReader, TlsServerHello},
 };
 
-/// Computes the JA3 fingerprint of a parsed TLS `ClientHello`.
+/// Computes a 32-character JA3 fingerprint from a parsed [`TlsClientHello`].
 ///
 /// # Examples
 ///
@@ -124,7 +124,7 @@ pub fn ja3_fingerprint(client_hello: &TlsClientHello) -> Result<String, Error> {
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-/// Computes the JA3S fingerprint of a parsed TLS `ServerHello`.
+/// Computes a 32-character JA3S fingerprint from a parsed [`TlsServerHello`].
 ///
 /// # Examples
 ///
